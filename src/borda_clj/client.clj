@@ -7,13 +7,14 @@
 (defn collect
   "Adds the given measurement (values and dimensions) to the given hashmap and caps the size of the hashmap at the given max-buffer-size"
   [measurements max-buffer-size dimensions values]
-  (let [key (merge (sorted-map) dimensions)]
+  (let [key (into (sorted-map) dimensions)]
     (if (contains? measurements key)
       ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
-      (assoc measurements key (merge-with + (get measurements key) values)) ; merge with existing in buffer
+      (update measurements key (partial merge-with +) values) ; merge with existing in buffer
       (if (< (count measurements) max-buffer-size)
         (assoc measurements key values) ; space available, add to buffer
-        (do (print "borda buffer full, discarding measurement" dimensions values) measurements))))) ; buffer full
+        (do (print "borda buffer full, discarding measurement" dimensions values)
+          measurements))))) ; buffer full
 
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
@@ -22,12 +23,12 @@
    measurements to max-buffer-size. The second is a function that flushes the
    buffer and stops the background thread that does the submitting."
   [max-buffer-size interval send on-send-error]
-  (let [measurements  (atom (hash-map))
+  (let [measurements  (atom {})
         running       (atom true)
         submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
         resubmit      (fn [m] (doseq [[dimensions values] (seq m)] (submit dimensions values)))
         flush         (fn [on-flush-error]
-                        (let [[m] (reset-vals! measurements (hash-map))]
+                        (let [[m] (reset-vals! measurements {})]
                           (if (> (count m) 0)
                             (try
                               (send m)

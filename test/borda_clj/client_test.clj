@@ -3,13 +3,13 @@
             [borda-clj.client :refer :all]))
 
 (deftest test-collect
-  (let [da      (hash-map "x" "x" "y" "y")
-        db      (hash-map "x" "xx" "y" "yy")
-        va      (hash-map "i" 1 "ii" 10)
-        vb      (hash-map "i" 2 "ii" 20)
-        b1      (hash-map)
+  (let [da      {:x "x" :y "y"}
+        db      {:x "xx" :y "yy"}
+        va      {:i 1 :ii 2}
+        vb      {:i 2 :ii 20}
+        b1      {}
         b2      (hash-map da va)
-        bmerged (hash-map da (hash-map "i" 3 "ii" 30))]
+        bmerged (hash-map da {:i 3 :ii 30})]
     (testing "Buffer equals self"
       (is (= b2 b2)))
     (testing "Collecting to empty"
@@ -20,10 +20,10 @@
       (is (= b2 (collect b2 1 db vb))))))
 
 (deftest test-reducing-submitter
-  (let [da            (hash-map "x" "x" "y" "y")
-        va            (hash-map "i" 1 "ii" 10)
-        vb            (hash-map "i" 2 "ii" 20)
-        bmerged       (hash-map da (hash-map "i" 3 "ii" 30))
+  (let [da      {:x "x" :y "y"}
+        va      {:i 1 :ii 2}
+        vb      {:i 2 :ii 20}
+        bmerged (hash-map da {:i 3 :ii 30})
         fail          (atom true)
         result        (atom {})
         update        (fn [next]
