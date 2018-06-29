@@ -13,7 +13,7 @@
       (assoc measurements key (merge-with + (get measurements key) values)) ; merge with existing in buffer
       (if (< (count measurements) max-buffer-size)
         (assoc measurements key values) ; space available, add to buffer
-        measurements)))) ; buffer full
+        (do (print "borda buffer full, discarding measurement" dimensions values) measurements))))) ; buffer full
 
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
