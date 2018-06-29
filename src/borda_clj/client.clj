@@ -18,9 +18,9 @@
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
    aggregates measurements and sends them using the given send function at the
-   specified interval (in seconds) and limits the size of pending measurements
-   to max-buffer-size. The second is a function that stops the background
-   thread that does the submitting."
+   specified interval (in milliseconds) and limits the size of pending
+   measurements to max-buffer-size. The second is a function that stops the
+   background thread that does the submitting."
   [max-buffer-size interval send on-send-error]
   (let [measurements  (atom (hash-map))
         running       (atom true)
@@ -36,7 +36,7 @@
         stop          (fn [] (reset! running false) (flush on-send-error))]
         ; periodically send to borda
         (future (while @running (do
-          (Thread/sleep (* interval 1000))
+          (Thread/sleep interval)
           (flush (fn [m e] (on-send-error m e) (resubmit m))))))
         [submit stop]))
 
@@ -45,11 +45,11 @@
    reducing-submitter and that sends the measurements to the specified stream at
    the given URL via HTTP"
   [stream url]
-  (fn [measurements]
+  (fn [measurements socket-timeout conn-timeout]
     (try+
       (-> @(http/post url
-                      {:socket-timeout 10000
-                       :conn-timeout 10000
+                      {:socket-timeout socket-timeout
+                       :conn-timeout conn-timeout
                        :content-type :json
                        :body (json/generate-string (map (fn [[dimensions values]] {:name stream :dimensions dimensions :values values}) measurements))})
           :body

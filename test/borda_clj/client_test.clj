@@ -31,10 +31,10 @@
                           (do (reset! fail false) (throw (Exception. "I'm failing"))) ; fail on first send
                           (swap! result (fn [orig] (if (= orig {}) next orig)))))     ; update on subsequent send
         log-error     (fn [measurements e] (println "error on sending" (count measurements) "measurements to borda"))
-        [submit stop] (reducing-submitter 10 1 update log-error)]
+        [submit stop] (reducing-submitter 10 100 update log-error)]
     (testing "Submit works"
       (submit da va)
       (submit da vb)
-      (Thread/sleep 3000)
+      (Thread/sleep 300)
       (stop)
       (is (= bmerged @result)))))
