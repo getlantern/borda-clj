@@ -19,8 +19,8 @@
   "Returns two functions. The first is a reducing submitter that collects and
    aggregates measurements and sends them using the given send function at the
    specified interval (in milliseconds) and limits the size of pending
-   measurements to max-buffer-size. The second is a function that stops the
-   background thread that does the submitting."
+   measurements to max-buffer-size. The second is a function that flushes the
+   buffer and stops the background thread that does the submitting."
   [max-buffer-size interval send on-send-error]
   (let [measurements  (atom (hash-map))
         running       (atom true)
