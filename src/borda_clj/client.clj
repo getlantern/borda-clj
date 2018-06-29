@@ -25,17 +25,19 @@
   (let [measurements  (atom (hash-map))
         running       (atom true)
         submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
-        stop          (fn [] (reset! running false))]
+        resubmit      (fn [m] (doseq [[dimensions values] (seq m)] (submit dimensions values)))
+        flush         (fn [on-flush-error]
+                        (let [[m] (reset-vals! measurements (hash-map))]
+                          (if (> (count m) 0)
+                            (try
+                              (send m)
+                              (catch Throwable e
+                                (on-flush-error m e))))))
+        stop          (fn [] (reset! running false) (flush on-send-error))]
         ; periodically send to borda
         (future (while @running (do
           (Thread/sleep (* interval 1000))
-          (let [[m] (reset-vals! measurements (hash-map))]
-            (if (> (count m) 0)
-              (try
-                (send m)
-                (catch Throwable e
-                  (on-send-error m e)
-                  (doseq [[dimensions values] (seq m)] (submit dimensions values))))))))) ; re-submit measurements
+          (flush (fn [m e] (on-send-error m e) (resubmit m))))))
         [submit stop]))
 
 (defn http-sender
