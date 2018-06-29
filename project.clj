@@ -5,6 +5,7 @@
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [aleph "0.4.4"]
+                 [io.netty/netty-tcnative-boringssl-static "2.0.0.Final"]
                  [io.netty/netty-all "4.1.11.Final"]
                  [cheshire "5.8.0"]
                  [slingshot "0.12.2"]]
