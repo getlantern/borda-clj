@@ -26,10 +26,10 @@
   (let [measurements  (atom {})
         running       (atom true)
         submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
-        resubmit      (fn [m] (doseq [[dimensions values] (seq m)] (submit dimensions values)))
+        resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
         flush         (fn [on-flush-error]
                         (let [[m] (reset-vals! measurements {})]
-                          (if (> (count m) 0)
+                          (if (not-empty m)
                             (try
                               (send m)
                               (catch Throwable e

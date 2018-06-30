@@ -5,7 +5,7 @@
 (deftest test-collect
   (let [da      {:x "x" :y "y"}
         db      {:x "xx" :y "yy"}
-        va      {:i 1 :ii 2}
+        va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
         b1      {}
         b2      (hash-map da va)
@@ -21,7 +21,7 @@
 
 (deftest test-reducing-submitter
   (let [da      {:x "x" :y "y"}
-        va      {:i 1 :ii 2}
+        va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
         bmerged (hash-map da {:i 3 :ii 30})
         fail          (atom true)
