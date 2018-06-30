@@ -14,7 +14,7 @@
       (if (< (count measurements) max-buffer-size)
         (assoc measurements key values) ; space available, add to buffer
         (do (print "borda buffer full, discarding measurement" dimensions values)
-          measurements))))) ; buffer full
+            measurements))))) ; buffer full
 
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
@@ -36,10 +36,10 @@
                                 (on-flush-error m e))))))
         stop          (fn [] (reset! running false) (flush on-send-error))]
         ; periodically send to borda
-        (future (while @running (do
-          (Thread/sleep interval)
-          (flush (fn [m e] (on-send-error m e) (resubmit m))))))
-        [submit stop]))
+    (future (while @running (do
+                              (Thread/sleep interval)
+                              (flush (fn [m e] (on-send-error m e) (resubmit m))))))
+    [submit stop]))
 
 (defn http-sender
   "Returns a function that can be used as the 'send' parameter to
@@ -48,14 +48,14 @@
   [stream url]
   (fn [measurements socket-timeout conn-timeout]
     (try+
-      (-> @(http/post url
-                      {:socket-timeout socket-timeout
-                       :conn-timeout conn-timeout
-                       :content-type :json
-                       :body (json/generate-string (map (fn [[dimensions values]] {:name stream :dimensions dimensions :values values}) measurements))})
-          :body
-          bs/to-string)
-      (catch [:status 400] {:keys [request-time headers body]}
-        (throw (Exception. (str "Bad request sending measurements to borda: " (slurp body)))))
-      (catch Object _
-        (throw (Exception. (str "Unexpected error sending measurements to borda: " (:throwable &throw-context))))))))
+     (-> @(http/post url
+                     {:socket-timeout socket-timeout
+                      :conn-timeout conn-timeout
+                      :content-type :json
+                      :body (json/generate-string (map (fn [[dimensions values]] {:name stream :dimensions dimensions :values values}) measurements))})
+         :body
+         bs/to-string)
+     (catch [:status 400] {:keys [request-time headers body]}
+       (throw (Exception. (str "Bad request sending measurements to borda: " (slurp body)))))
+     (catch Object _
+       (throw (Exception. (str "Unexpected error sending measurements to borda: " (:throwable &throw-context))))))))
