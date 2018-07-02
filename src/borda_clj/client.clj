@@ -21,6 +21,13 @@
         (do (print "borda buffer full, discarding measurement" dimensions values)
             (update measurements discard_key (partial merge-with +) {:success_count 1})))))) ; buffer full
 
+(defn merge-global [global-dimensions kv]
+  (let [[dimensions values] kv]
+    [(merge global-dimensions dimensions) values]))
+
+(defn merge-global-to-measurements [global-dimensions measurements]
+  (into {} (map (partial merge-global global-dimensions) (seq measurements))))
+
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
    aggregates measurements and sends them using the given send function at the
@@ -30,8 +37,10 @@
    the background thread that does the submitting. Parameter on-send-error is a
    function that will be called with a map of buffered measurements and the
    error if and when flushing the buffer to borda fails. Except on the final
-   flush, failed measurements will be rebuffered if space is available."
-  [max-buffer-size interval send on-send-error]
+   flush, failed measurements will be rebuffered if space is available.
+   Parameter global-dimensions is a map of dimensions that will be included with
+   every single measurement."
+  [global-dimensions max-buffer-size interval send on-send-error]
   (let [measurements  (atom (empty-measurements))
         running       (atom true)
         submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
@@ -40,7 +49,7 @@
                         (let [[m] (reset-vals! measurements (empty-measurements))]
                           (if (not-empty m)
                             (try
-                              (send m)
+                              (send (merge-global-to-measurements global-dimensions m))
                               (catch Throwable e
                                 (on-flush-error m e))))))
         stop          (fn [] (reset! running false) (flush on-send-error))]

@@ -21,10 +21,11 @@
       (is (= b2d (collect b2 1 db vb))))))
 
 (deftest test-reducing-submitter
-  (let [da      {:x "x" :y "y"}
+  (let [global  {:gk "global"}
+        da      {:x "x" :y "y"}
         va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
-        bmerged {da {:i 3 :ii 30} {:op "_discard"} {:success_count 0}}
+        bmerged {(merge global da) {:i 3 :ii 30} (merge global {:op "_discard"}) {:success_count 0}}
         fail          (atom true)
         result        (atom {})
         update        (fn [next]
@@ -32,7 +33,7 @@
                           (do (reset! fail false) (throw (Exception. "I'm failing"))) ; fail on first send
                           (swap! result (fn [orig] (if (= orig {}) next orig)))))     ; update on subsequent send
         log-error     (fn [measurements e] (println "error on sending" (count measurements) "measurements to borda"))
-        [submit stop] (reducing-submitter 10 100 update log-error)]
+        [submit stop] (reducing-submitter global 10 100 update log-error)]
     (testing "Submit works"
       (submit da va)
       (submit da vb)
