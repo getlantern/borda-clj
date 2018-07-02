@@ -4,10 +4,10 @@
             [byte-streams :as bs]
             [cheshire.core :as json]))
 
-(def submit_key {:op "_submit"})
+(def submit-key {:op "_submit"})
 
 (defn submit-failed [measurements values]
-  (update measurements submit_key (partial merge-with +) {:error_count (get values :_submits)}))
+  (update measurements submit-key (partial merge-with +) {:error_count (get values :_submits)}))
 
 (defn collect
   "Adds the given measurement (values and dimensions) to the given hashmap and
@@ -28,14 +28,14 @@
   [dimensions (dissoc values :_submits)])
 
 (defn finalize-submit-counts [measurements]
-  (let [m (update measurements submit_key merge {:success_count (reduce + (map (fn [val] (get val :_submits)) (vals measurements)))})]
-    (into {} (map remove-submits (seq m)))))
+  (let [m (update measurements submit-key merge {:success_count (reduce + (map (fn [val] (get val :_submits)) (vals measurements)))})]
+    (into {} (map remove-submits m))))
 
 (defn merge-global [global-dimensions [dimensions values]]
   [(merge global-dimensions dimensions) values])
 
 (defn merge-global-to-measurements [global-dimensions measurements]
-  (into {} (map (partial merge-global global-dimensions) (seq measurements))))
+  (into {} (map (partial merge-global global-dimensions) measurements)))
 
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
