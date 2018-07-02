@@ -14,11 +14,10 @@
    caps the size of the hashmap at the given max-buffer-size."
   [measurements max-buffer-size dimensions values]
   (let [key  (into (sorted-map) dimensions)
-        vals (update values :_submits (fnil max 0 0) 1)] ; use existing _points if available, else 1
+        vals (merge {:_submits 1} values)]
     (if (contains? measurements key)
-      (do
-        ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
-        (update measurements key (partial merge-with +) vals)) ; merge with existing in buffer
+      ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
+      (update measurements key (partial merge-with +) vals) ; merge with existing in buffer
       (if (< (count measurements) max-buffer-size)
         (assoc measurements key vals) ; space available, add to buffer
         (do (println "borda buffer full, discarding measurement" key vals)
