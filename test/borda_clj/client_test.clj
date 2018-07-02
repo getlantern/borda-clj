@@ -8,8 +8,9 @@
         va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
         b1      {}
-        b2      (hash-map da va)
-        bmerged (hash-map da {:i 3 :ii 30})]
+        b2      {da va}
+        b2d     {da va {:op "_discard"} {:success_count 1}}
+        bmerged {da {:i 3 :ii 30}}]
     (testing "Buffer equals self"
       (is (= b2 b2)))
     (testing "Collecting to empty"
@@ -17,13 +18,13 @@
     (testing "Collecting to existing"
       (is (= bmerged (collect b2 1 da vb))))
     (testing "Collecting to full"
-      (is (= b2 (collect b2 1 db vb))))))
+      (is (= b2d (collect b2 1 db vb))))))
 
 (deftest test-reducing-submitter
   (let [da      {:x "x" :y "y"}
         va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
-        bmerged (hash-map da {:i 3 :ii 30})
+        bmerged {da {:i 3 :ii 30} {:op "_discard"} {:success_count 0}}
         fail          (atom true)
         result        (atom {})
         update        (fn [next]
