@@ -9,23 +9,22 @@
         vb      {:i 2 :ii 20}
         b1      {}
         b2      {da va}
-        b2d     {da va {:op "_discard"} {:success_count 1}}
         bmerged {da {:i 3 :ii 30}}]
     (testing "Buffer equals self"
       (is (= b2 b2)))
     (testing "Collecting to empty"
-      (is (= b2 (collect b1 1 da va))))
+      (is (= (measure_succeeded true b2) (collect b1 true 1 da va))))
     (testing "Collecting to existing"
-      (is (= bmerged (collect b2 1 da vb))))
+      (is (= (measure_succeeded true bmerged) (collect b2 true 1 da vb))))
     (testing "Collecting to full"
-      (is (= b2d (collect b2 1 db vb))))))
+      (is (= (measure_failed true b2) (collect b2 true 1 db vb))))))
 
 (deftest test-reducing-submitter
   (let [global  {:gk "global"}
         da      {:x "x" :y "y"}
         va      {:i 1 :ii 10}
         vb      {:i 2 :ii 20}
-        bmerged {(merge global da) {:i 3 :ii 30} (merge global {:op "_discard"}) {:success_count 0}}
+        bmerged {(merge global da) {:i 3 :ii 30} (merge global {:op "_measure"}) {:success_count 2}}
         fail          (atom true)
         result        (atom {})
         update        (fn [next]

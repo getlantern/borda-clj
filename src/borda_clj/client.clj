@@ -4,26 +4,35 @@
             [byte-streams :as bs]
             [cheshire.core :as json]))
 
-(def discard_key {:op "_discard"})
+(def measure_key {:op "_measure"})
 
-(defn empty-measurements []
-  {discard_key {:success_count 0}})
+(defn measure_succeeded [count_measure measurements]
+  (if (not count_measure)
+    measurements
+    (update measurements measure_key (partial merge-with +) {:success_count 1})))
+
+(defn measure_failed [count_measure measurements]
+  (if (not count_measure)
+    measurements
+    (update measurements measure_key (partial merge-with +) {:error_count 1})))
 
 (defn collect
-  "Adds the given measurement (values and dimensions) to the given hashmap and caps the size of the hashmap at the given max-buffer-size"
-  [measurements max-buffer-size dimensions values]
+  "Adds the given measurement (values and dimensions) to the given hashmap and
+   caps the size of the hashmap at the given max-buffer-size. If count_measure
+   is true, this will keep metrics on how many measurements were successfully
+   collected vs discarded."
+  [measurements count_measure max-buffer-size dimensions values]
   (let [key (into (sorted-map) dimensions)]
     (if (contains? measurements key)
       ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
-      (update measurements key (partial merge-with +) values) ; merge with existing in buffer
+      (measure_succeeded count_measure (update measurements key (partial merge-with +) values)) ; merge with existing in buffer
       (if (< (count measurements) max-buffer-size)
-        (assoc measurements key values) ; space available, add to buffer
+        (measure_succeeded count_measure (assoc measurements key values)) ; space available, add to buffer
         (do (print "borda buffer full, discarding measurement" dimensions values)
-            (update measurements discard_key (partial merge-with +) {:success_count 1})))))) ; buffer full
+            (measure_failed count_measure measurements)))))) ; buffer full
 
-(defn merge-global [global-dimensions kv]
-  (let [[dimensions values] kv]
-    [(merge global-dimensions dimensions) values]))
+(defn merge-global [global-dimensions [dimensions values]]
+  [(merge global-dimensions dimensions) values])
 
 (defn merge-global-to-measurements [global-dimensions measurements]
   (into {} (map (partial merge-global global-dimensions) (seq measurements))))
@@ -41,12 +50,12 @@
    Parameter global-dimensions is a map of dimensions that will be included with
    every single measurement."
   [global-dimensions max-buffer-size interval send on-send-error]
-  (let [measurements  (atom (empty-measurements))
+  (let [measurements  (atom {})
         running       (atom true)
-        submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
-        resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
+        submit        (fn [count_measure dimensions values] (swap! measurements collect count_measure max-buffer-size dimensions values))
+        resubmit      (fn [m] (doseq [[dimensions values] m] (submit false dimensions values)))
         flush         (fn [on-flush-error]
-                        (let [[m] (reset-vals! measurements (empty-measurements))]
+                        (let [[m] (reset-vals! measurements {})]
                           (if (not-empty m)
                             (try
                               (send (merge-global-to-measurements global-dimensions m))
@@ -57,7 +66,7 @@
     (future (while @running (do
                               (Thread/sleep interval)
                               (flush (fn [m e] (on-send-error m e) (resubmit m))))))
-    [submit stop]))
+    [(partial submit true) stop]))
 
 (defn http-sender
   "Returns a function that can be used as the 'send' parameter to
