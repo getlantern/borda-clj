@@ -4,32 +4,32 @@
             [byte-streams :as bs]
             [cheshire.core :as json]))
 
-(def measure_key {:op "_measure"})
+(def submit_key {:op "_submit"})
 
-(defn measure_succeeded [count_measure measurements]
-  (if (not count_measure)
-    measurements
-    (update measurements measure_key (partial merge-with +) {:success_count 1})))
-
-(defn measure_failed [count_measure measurements]
-  (if (not count_measure)
-    measurements
-    (update measurements measure_key (partial merge-with +) {:error_count 1})))
+(defn submit-failed [measurements values]
+  (update measurements submit_key (partial merge-with +) {:error_count (get values :_submits)}))
 
 (defn collect
   "Adds the given measurement (values and dimensions) to the given hashmap and
-   caps the size of the hashmap at the given max-buffer-size. If count_measure
-   is true, this will keep metrics on how many measurements were successfully
-   collected vs discarded."
-  [measurements count_measure max-buffer-size dimensions values]
-  (let [key (into (sorted-map) dimensions)]
+   caps the size of the hashmap at the given max-buffer-size."
+  [measurements max-buffer-size dimensions values]
+  (let [key  (into (sorted-map) dimensions)
+        vals (update values :_submits (fnil max 0 0) 1)] ; use existing _points if available, else 1
     (if (contains? measurements key)
-      ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
-      (measure_succeeded count_measure (update measurements key (partial merge-with +) values)) ; merge with existing in buffer
+      (do
+        ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
+        (update measurements key (partial merge-with +) vals)) ; merge with existing in buffer
       (if (< (count measurements) max-buffer-size)
-        (measure_succeeded count_measure (assoc measurements key values)) ; space available, add to buffer
-        (do (print "borda buffer full, discarding measurement" dimensions values)
-            (measure_failed count_measure measurements)))))) ; buffer full
+        (assoc measurements key vals) ; space available, add to buffer
+        (do (println "borda buffer full, discarding measurement" key vals)
+            (submit-failed measurements vals)))))) ; buffer full
+
+(defn remove-submits [[dimensions values]]
+  [dimensions (dissoc values :_submits)])
+
+(defn finalize-submit-counts [measurements]
+  (let [m (update measurements submit_key merge {:success_count (reduce + (map (fn [val] (get val :_submits)) (vals measurements)))})]
+    (into {} (map remove-submits (seq m)))))
 
 (defn merge-global [global-dimensions [dimensions values]]
   [(merge global-dimensions dimensions) values])
@@ -52,13 +52,13 @@
   [global-dimensions max-buffer-size interval send on-send-error]
   (let [measurements  (atom {})
         running       (atom true)
-        submit        (fn [count_measure dimensions values] (swap! measurements collect count_measure max-buffer-size dimensions values))
-        resubmit      (fn [m] (doseq [[dimensions values] m] (submit false dimensions values)))
+        submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
+        resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
         flush         (fn [on-flush-error]
                         (let [[m] (reset-vals! measurements {})]
                           (if (not-empty m)
                             (try
-                              (send (merge-global-to-measurements global-dimensions m))
+                              (send (merge-global-to-measurements global-dimensions (finalize-submit-counts m)))
                               (catch Throwable e
                                 (on-flush-error m e))))))
         stop          (fn [] (reset! running false) (flush on-send-error))]
@@ -66,7 +66,7 @@
     (future (while @running (do
                               (Thread/sleep interval)
                               (flush (fn [m e] (on-send-error m e) (resubmit m))))))
-    [(partial submit true) stop]))
+    [submit stop]))
 
 (defn http-sender
   "Returns a function that can be used as the 'send' parameter to
