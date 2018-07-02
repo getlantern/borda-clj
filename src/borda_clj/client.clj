@@ -2,7 +2,8 @@
   (:use [slingshot.slingshot :only [throw+ try+]])
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :as json]))
+            [cheshire.core :as json]
+            [clojure.core.async :as async :refer (<! >!! alts! chan close! go-loop onto-chan timeout)]))
 
 (defn collect
   "Adds the given measurement (values and dimensions) to the given hashmap and caps the size of the hashmap at the given max-buffer-size"
@@ -16,30 +17,57 @@
         (do (print "borda buffer full, discarding measurement" dimensions values)
             measurements))))) ; buffer full
 
-(defn reducing-submitter
-  "Returns two functions. The first is a reducing submitter that collects and
+(comment
+  (defn reducing-submitter
+    "Returns two functions. The first is a reducing submitter that collects and
    aggregates measurements and sends them using the given send function at the
    specified interval (in milliseconds) and limits the size of pending
    measurements to max-buffer-size. The second is a function that flushes the
    buffer and stops the background thread that does the submitting."
+    [max-buffer-size interval send on-send-error]
+    (let [measurements  (atom {})
+          running       (atom true)
+          submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
+          resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
+          flush         (fn [on-flush-error]
+                          (let [[m] (reset-vals! measurements {})]
+                            (if (not-empty m)
+                              (try
+                                (send m)
+                                (catch Throwable e
+                                  (on-flush-error m e))))))
+          stop          (fn [] (reset! running false) (flush on-send-error))]
+                                        ; periodically send to borda
+      (future (while @running (do
+                                (Thread/sleep interval)
+                                (flush (fn [m e] (on-send-error m e) (resubmit m))))))
+      [submit stop])))
+
+(defn reducing-submitter
   [max-buffer-size interval send on-send-error]
-  (let [measurements  (atom {})
-        running       (atom true)
-        submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
-        resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
-        flush         (fn [on-flush-error]
-                        (let [[m] (reset-vals! measurements {})]
-                          (if (not-empty m)
-                            (try
-                              (send m)
-                              (catch Throwable e
-                                (on-flush-error m e))))))
-        stop          (fn [] (reset! running false) (flush on-send-error))]
-        ; periodically send to borda
-    (future (while @running (do
-                              (Thread/sleep interval)
-                              (flush (fn [m e] (on-send-error m e) (resubmit m))))))
-    [submit stop]))
+  (let [report-ch (chan)]
+    (go-loop [measurements {}
+              flush-timeout (timeout interval)]
+      (let [flush (fn [on-error]
+                    (when (not-empty measurements)
+                      (try
+                        (send measurements)
+                        (catch Throwable e
+                          (on-error measurements e)))))
+            [[dimensions values :as v] ch] (alts! [report-ch flush-timeout])]
+          (cond (= ch flush-timeout)
+                (do
+                  (flush (fn [m e]
+                           (on-send-error m e)
+                           (onto-chan report-ch m false)))
+                  (recur {} (timeout interval)))
+                (some? v)
+                (recur (collect measurements max-buffer-size dimensions values)
+                       flush-timeout)
+                :else (flush on-send-error))))
+    [(fn [dimensions values]
+       (>!! report-ch [dimensions values]))
+     #(close! report-ch)]))
 
 (defn http-sender
   "Returns a function that can be used as the 'send' parameter to
