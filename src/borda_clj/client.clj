@@ -17,7 +17,7 @@
         (do (print "borda buffer full, discarding measurement" dimensions values)
             measurements))))) ; buffer full
 
-(defn reduce-reports [in-ch out-ch kill-ch max-buffer-size]
+(defn go-reduce-reports [in-ch out-ch kill-ch max-buffer-size]
   (go-loop [measurements {}]
     (let [[v ch] (alts! [in-ch [out-ch measurements]])]
       (cond
@@ -33,7 +33,7 @@
         (catch Throwable e
           (on-error measurements e))))))
 
-(defn flush-measurements [report-ch measurements-ch kill-ch interval send on-send-error]
+(defn go-flush-measurements [report-ch measurements-ch kill-ch interval send on-send-error]
   (go-loop [flush-timeout (timeout interval)]
     (let [[_ ch] (alts! [kill-ch flush-timeout])]
       (if (= ch kill-ch)
@@ -49,17 +49,17 @@
   [max-buffer-size interval send on-send-error]
   (let [;; clients send reports ([dimensions values] tuples) to this channel.
         ;; These reports are immediately reduced into a single mesurements map
-        ;; by reduce-reports, so writing to this channel never blocks.
+        ;; by `go-reduce-reports`, so writing to this channel never blocks.
         report-ch (chan)
         ;; `flush` pulls any measurements or the empty map from this channel.
         ;; Reading from this never blocks.
         measurements-ch (chan)
-        ;; `reduce-reports` closes this channel as soon as the `report-ch` gets
-        ;; closed. We do this so `flush-measurements` can be stopped without
-        ;; `alt!`ing on`report-ch`.
+        ;; `go-reduce-reports` closes this channel as soon as the `report-ch`
+        ;; gets closed. We do this so `go-flush-measurements` can be stopped
+        ;; without `alt!`ing on`report-ch`.
         kill-ch (chan)]
-    (reduce-reports report-ch measurements-ch kill-ch max-buffer-size)
-    (flush-measurements report-ch measurements-ch kill-ch interval send on-send-error)
+    (go-reduce-reports report-ch measurements-ch kill-ch max-buffer-size)
+    (go-flush-measurements report-ch measurements-ch kill-ch interval send on-send-error)
     [(fn [dimensions values]
        (>!! report-ch [dimensions values]))
      #(close! report-ch)]))
