@@ -4,6 +4,7 @@
   :license {:name "Apache Version 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.9.0"]
+                 [org.clojure/core.async "0.4.474"]
                  [aleph "0.4.4"]
                  [io.netty/netty-tcnative-boringssl-static "2.0.0.Final"]
                  [io.netty/netty-all "4.1.11.Final"]

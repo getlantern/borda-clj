@@ -2,7 +2,8 @@
   (:use [slingshot.slingshot :only [throw+ try+]])
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :as json]))
+            [cheshire.core :as json]
+            [clojure.core.async :as async :refer (<! >!! <!! alts! chan close! go go-loop onto-chan timeout)]))
 
 (def submit-key {:op "_submit"})
 
@@ -35,6 +36,35 @@
 (defn merge-global-to-measurements [global-dimensions measurements]
   (into {} (map (partial merge-global global-dimensions) measurements)))
 
+(defn go-reduce-reports [report-ch measurements-ch kill-ch max-buffer-size]
+  (go-loop [measurements {}]
+    (let [[v ch] (alts! [report-ch [measurements-ch measurements]])]
+      (cond
+        (= ch measurements-ch) (recur {})
+        (nil? v) (close! kill-ch)
+        :else (recur (apply collect measurements max-buffer-size v))))))
+
+(defn flush [measurements-ch global-dimensions send on-error]
+  (let [measurements (<!! measurements-ch)]
+    (when (not-empty measurements)
+      (try
+        (send (merge-global-to-measurements global-dimensions (finalize-submit-counts measurements)))
+        (catch Throwable e
+          (on-error measurements e))))))
+
+(defn go-flush-measurements [report-ch measurements-ch kill-ch global-dimensions interval send on-send-error]
+  (go-loop [flush-timeout (timeout interval)]
+    (let [[_ ch] (alts! [kill-ch flush-timeout])]
+      (if (= ch kill-ch)
+        (flush measurements-ch global-dimensions send on-send-error)
+        (do (flush measurements-ch
+                   global-dimensions
+                   send
+                   (fn [m e]
+                     (on-send-error m e)
+                     (onto-chan report-ch m false)))
+            (recur (timeout interval)))))))
+
 (defn reducing-submitter
   "Returns two functions. The first is a reducing submitter that collects and
    aggregates measurements and sends them using the given send function at the
@@ -48,23 +78,22 @@
    Parameter global-dimensions is a map of dimensions that will be included with
    every single measurement."
   [global-dimensions max-buffer-size interval send on-send-error]
-  (let [measurements  (atom {})
-        running       (atom true)
-        submit        (fn [dimensions values] (swap! measurements collect max-buffer-size dimensions values))
-        resubmit      (fn [m] (doseq [[dimensions values] m] (submit dimensions values)))
-        flush         (fn [on-flush-error]
-                        (let [[m] (reset-vals! measurements {})]
-                          (if (not-empty m)
-                            (try
-                              (send (merge-global-to-measurements global-dimensions (finalize-submit-counts m)))
-                              (catch Throwable e
-                                (on-flush-error m e))))))
-        stop          (fn [] (reset! running false) (flush on-send-error))]
-        ; periodically send to borda
-    (future (while @running (do
-                              (Thread/sleep interval)
-                              (flush (fn [m e] (on-send-error m e) (resubmit m))))))
-    [submit stop]))
+  (let [;; clients send reports ([dimensions values] tuples) to this channel.
+        ;; These reports are immediately reduced into a single mesurements map
+        ;; by `go-reduce-reports`, so writing to this channel never blocks.
+        report-ch (chan)
+        ;; `flush` pulls any measurements or the empty map from this channel.
+        ;; Reading from this never blocks.
+        measurements-ch (chan)
+        ;; `go-reduce-reports` closes this channel as soon as the `report-ch`
+        ;; gets closed. We do this so `go-flush-measurements` can be stopped
+        ;; without `alt!`ing on`report-ch`.
+        kill-ch (chan)]
+    (go-reduce-reports report-ch measurements-ch kill-ch max-buffer-size)
+    (go-flush-measurements report-ch measurements-ch kill-ch global-dimensions interval send on-send-error)
+    [(fn [dimensions values]
+       (>!! report-ch [dimensions values]))
+     #(close! report-ch)]))
 
 (defn http-sender
   "Returns a function that can be used as the 'send' parameter to
