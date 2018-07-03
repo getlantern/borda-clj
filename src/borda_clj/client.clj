@@ -17,11 +17,11 @@
         (do (print "borda buffer full, discarding measurement" dimensions values)
             measurements))))) ; buffer full
 
-(defn go-reduce-reports [in-ch out-ch kill-ch max-buffer-size]
+(defn go-reduce-reports [report-ch measurements-ch kill-ch max-buffer-size]
   (go-loop [measurements {}]
-    (let [[v ch] (alts! [in-ch [out-ch measurements]])]
+    (let [[v ch] (alts! [report-ch [measurements-ch measurements]])]
       (cond
-        (= ch out-ch) (recur {})
+        (= ch measurements-ch) (recur {})
         (nil? v) (close! kill-ch)
         :else (recur (apply collect measurements max-buffer-size v))))))
 
