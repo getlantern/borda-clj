@@ -57,7 +57,7 @@
              enriched-measurements
              {:trace-metadata trace-metadata}))
           (catch Throwable e
-            (on-error enriched-measurements e)))))))
+            (on-error measurements e)))))))
 
 (defn go-flush-measurements
   ;; take timeout constructor for testing purposes
