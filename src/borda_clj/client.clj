@@ -19,7 +19,8 @@
       ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
       (update measurements dimensions (partial merge-with +) vals) ; merge with existing in buffer
       (if (or (< (count measurements) max-buffer-size)
-              ; always allow the submit key
+              ; always allow the submit key; otherwise there's a chance we'll
+              ; lose these when resubmitted
               (= dimensions submit-key))
         (assoc measurements dimensions vals) ; space available, add to buffer
         (do (println "borda buffer full, discarding measurement" dimensions vals)
