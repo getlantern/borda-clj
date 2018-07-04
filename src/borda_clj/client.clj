@@ -50,13 +50,14 @@
 (defn flush [measurements-ch global-dimensions send on-error trace-metadata]
   (let [measurements (<!! measurements-ch)]
     (when (not-empty measurements)
-      (try
-        (send
-         (with-meta
-           (merge-global-to-measurements global-dimensions (finalize-submit-counts measurements))
-           {:trace-metadata trace-metadata}))
-        (catch Throwable e
-          (on-error measurements e))))))
+      (let [enriched-measurements (merge-global-to-measurements global-dimensions (finalize-submit-counts measurements))]
+        (try
+          (send
+           (with-meta
+             enriched-measurements
+             {:trace-metadata trace-metadata}))
+          (catch Throwable e
+            (on-error enriched-measurements e)))))))
 
 (defn go-flush-measurements
   ;; take timeout constructor for testing purposes
