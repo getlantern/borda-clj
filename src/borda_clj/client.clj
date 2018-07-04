@@ -27,7 +27,10 @@
   [dimensions (dissoc values :_submits)])
 
 (defn finalize-submit-counts [measurements]
-  (let [m (update measurements submit-key merge {:success_count (reduce + (map #(get % :_submits 0) (vals measurements)))})]
+  (let [m (update measurements submit-key merge {:success_count (->> (dissoc measurements submit-key)
+                                                                     vals
+                                                                     (map :_submits)
+                                                                     (reduce +))})]
     (into {} (map remove-submits m))))
 
 (defn merge-global [global-dimensions [dimensions values]]
