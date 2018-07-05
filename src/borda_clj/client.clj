@@ -15,10 +15,11 @@
    caps the size of the hashmap at the given max-buffer-size."
   [measurements max-buffer-size dimensions values]
   (let [vals (merge {:_submits 1} values)]
+    (println "collecting into" measurements)
     (if (contains? measurements dimensions)
       ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
       (update measurements dimensions (partial merge-with +) vals) ; merge with existing in buffer
-      (if (< (count measurements) max-buffer-size)
+      (if (or (= submit-key dimensions) (< (count (dissoc measurements submit-key)) max-buffer-size))
         (assoc measurements dimensions vals) ; space available, add to buffer
         (do (println "borda buffer full, discarding measurement" dimensions vals)
             (submit-failed measurements vals)))))) ; buffer full
@@ -27,7 +28,10 @@
   [dimensions (dissoc values :_submits)])
 
 (defn finalize-submit-counts [measurements]
-  (let [m (update measurements submit-key merge {:success_count (reduce + (map :_submits (vals measurements)))})]
+  (let [m (update measurements submit-key merge {:success_count (->> (dissoc measurements submit-key)
+                                                                     vals
+                                                                     (map :_submits)
+                                                                     (reduce +))})]
     (into {} (map remove-submits m))))
 
 (defn merge-global [global-dimensions [dimensions values]]
