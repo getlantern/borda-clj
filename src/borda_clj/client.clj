@@ -3,7 +3,7 @@
   (:require [aleph.http :as http]
             [byte-streams :as bs]
             [cheshire.core :as json]
-            [clojure.core.async :as async :refer (<! >!! <!! alts! chan close! go go-loop onto-chan timeout)]))
+            [clojure.core.async :as async :refer (<! >! >!! <!! alts! chan close! go go-loop onto-chan timeout)]))
 
 (def submit-key {:op "_submit"})
 
@@ -15,9 +15,8 @@
    caps the size of the hashmap at the given max-buffer-size."
   [measurements max-buffer-size dimensions values]
   (let [vals (merge {:_submits 1} values)]
-    (println "collecting into" measurements)
     (if (contains? measurements dimensions)
-      ; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
+      ;; TODO: support stuff other than SUM here (e.g. AVG, MIN, MAX, etc.)
       (update measurements dimensions (partial merge-with +) vals) ; merge with existing in buffer
       (if (or (= submit-key dimensions) (< (count (dissoc measurements submit-key)) max-buffer-size))
         (assoc measurements dimensions vals) ; space available, add to buffer
@@ -45,28 +44,37 @@
     (let [[v ch] (alts! [report-ch [measurements-ch measurements]])]
       (cond
         (= ch measurements-ch) (recur {})
-        (nil? v) (close! kill-ch)
+        (nil? v) (do (close! kill-ch) (>! measurements-ch measurements))
         :else (recur (apply collect measurements max-buffer-size v))))))
 
-(defn flush [measurements-ch global-dimensions send on-error]
+(defn flush [measurements-ch global-dimensions send on-error trace-metadata]
   (let [measurements (<!! measurements-ch)]
     (when (not-empty measurements)
-      (try
-        (send (merge-global-to-measurements global-dimensions (finalize-submit-counts measurements)))
-        (catch Throwable e
-          (on-error measurements e))))))
+      (let [enriched-measurements (merge-global-to-measurements global-dimensions (finalize-submit-counts measurements))]
+        (try
+          (send
+           (with-meta
+             enriched-measurements
+             {:trace-metadata trace-metadata}))
+          (catch Throwable e
+            (on-error measurements e)))))))
 
-(defn go-flush-measurements [report-ch measurements-ch kill-ch global-dimensions interval send on-send-error]
+(defn go-flush-measurements
+  ;; take timeout constructor for testing purposes
+  [report-ch measurements-ch kill-ch global-dimensions interval send on-send-error timeout]
   (go-loop [flush-timeout (timeout interval)]
-    (let [[_ ch] (alts! [kill-ch flush-timeout])]
+    (let [[v ch] (alts! [kill-ch flush-timeout])]
       (if (= ch kill-ch)
-        (flush measurements-ch global-dimensions send on-send-error)
+        (flush measurements-ch global-dimensions send on-send-error v)
         (do (flush measurements-ch
                    global-dimensions
                    send
                    (fn [m e]
                      (on-send-error m e)
-                     (onto-chan report-ch m false)))
+                     (onto-chan report-ch m false))
+                   ;; pass the channel value as metadata for testing purposes.
+                   ;; this is meaningless and ineffectual in production.
+                   v)
             (recur (timeout interval)))))))
 
 (defn reducing-submitter
@@ -91,10 +99,10 @@
         measurements-ch (chan)
         ;; `go-reduce-reports` closes this channel as soon as the `report-ch`
         ;; gets closed. We do this so `go-flush-measurements` can be stopped
-        ;; without `alt!`ing on`report-ch`.
+        ;; without `alt!`ing on `report-ch` or `measurements-ch`.
         kill-ch (chan)]
     (go-reduce-reports report-ch measurements-ch kill-ch max-buffer-size)
-    (go-flush-measurements report-ch measurements-ch kill-ch global-dimensions interval send on-send-error)
+    (go-flush-measurements report-ch measurements-ch kill-ch global-dimensions interval send on-send-error timeout)
     [(fn [dimensions values]
        (>!! report-ch [dimensions values]))
      #(close! report-ch)]))
