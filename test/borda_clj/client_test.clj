@@ -4,6 +4,8 @@
             [clojure.data.generators :as generators]
             [clj-gatling.core :as clj-gatling]))
 
+(System/setProperty "clojure.core.async.pool-size" "100") ;required for load-test
+
 (deftest test-collect
   (let [da      {:x "x" :y "y"}
         db      {:x "xx" :y "yy"}
