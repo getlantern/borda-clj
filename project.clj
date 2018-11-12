@@ -7,6 +7,8 @@
                  [org.clojure/core.async "0.4.474"]
                  [org.clojure/spec.alpha "0.2.168"]
                  [org.clojure/test.check "0.9.0" :scope "test"]
+                 [clj-gatling "0.13.0" :scope "test"]
+                 [org.clojure/data.generators "0.1.2" :scope "test"]
                  [expound "0.7.1"]
                  [aleph "0.4.4"]
                  [io.netty/netty-tcnative-boringssl-static "2.0.0.Final"]

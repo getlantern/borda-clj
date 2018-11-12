@@ -1,6 +1,8 @@
 (ns borda-clj.client-test
   (:require [clojure.test :refer :all]
-            [borda-clj.client :refer :all]))
+            [borda-clj.client :refer :all]
+            [clojure.data.generators :as generators]
+            [clj-gatling.core :as clj-gatling]))
 
 (deftest test-collect
   (let [da      {:x "x" :y "y"}
@@ -41,3 +43,17 @@
       (Thread/sleep 300)
       (stop)
       (is (= bmerged @result)))))
+
+(deftest test-load
+  (let [send          (fn [measurements] :default)
+        on-send-error (fn [measurements e] :default)
+        [submit stop] (reducing-submitter {} 10000 5000 send on-send-error)
+        do-submit     (fn [_] (do
+                                (submit {:da (rand-int 1000) :db (rand-int 1000) :dc (generators/string)} {:v 1})
+                                true))]
+    (testing "Concurrent submits"
+      (clj-gatling/run
+        {:name "Simulation"
+         :scenarios [{:name "Submit static measurements"
+                      :steps [{:name "submit" :request do-submit}]}]}
+        {:concurrency 100}))))
