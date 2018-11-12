@@ -47,9 +47,9 @@
       (is (= bmerged @result)))))
 
 (deftest test-load
-  (let [send          (fn [measurements] :default)
+  (let [send          (fn [measurements] (Thread/sleep 10000))
         on-send-error (fn [measurements e] :default)
-        [submit stop] (reducing-submitter {} 10000 5000 send on-send-error)
+        [submit stop] (reducing-submitter {} 10000 1 send on-send-error)
         do-submit     (fn [_] (do
                                 (submit {:da (rand-int 1000) :db (rand-int 1000) :dc (generators/string)} {:v 1})
                                 true))]
